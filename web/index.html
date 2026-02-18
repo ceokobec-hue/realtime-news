@@ -97,6 +97,35 @@
             flex-wrap: wrap;
         }
 
+        .interval-wrap {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-pill);
+            padding: 4px 10px 4px 12px;
+        }
+
+        .interval-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            white-space: nowrap;
+            cursor: default;
+        }
+
+        .interval-select {
+            border: none;
+            background: transparent;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--primary);
+            font-family: inherit;
+            outline: none;
+            cursor: pointer;
+            padding: 0;
+        }
+
         .last-updated {
             font-size: 12px;
             color: var(--text-dim);
@@ -991,6 +1020,17 @@
             </div>
             <div class="header-right">
                 <span class="last-updated">업데이트: <span id="lastUpdated">-</span></span>
+                <div class="interval-wrap">
+                    <label class="interval-label" for="intervalSelect">⏱ 자동수집</label>
+                    <select id="intervalSelect" class="interval-select">
+                        <option value="0">수동</option>
+                        <option value="1">1분</option>
+                        <option value="5" selected>5분</option>
+                        <option value="10">10분</option>
+                        <option value="30">30분</option>
+                        <option value="60">1시간</option>
+                    </select>
+                </div>
                 <div class="status-badge">
                     <span class="dot"></span>
                     <span id="statusLabel">대기 중</span>

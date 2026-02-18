@@ -10,6 +10,8 @@
 // ══════════════════════════════════════════════════════════════
 let keywords = [];   // [{ id, text, source }]
 let articlesMap = {};   // { keywordId: [article, ...] }
+let activeKeywordId = null; // 현재 선택된 키워드 ID
+let autoFetchTimer = null; // 자동 수집 타이머 ID
 
 // ══════════════════════════════════════════════════════════════
 // 2) API Base
@@ -39,6 +41,7 @@ const $ttSummary = document.getElementById("ttSummary");
 const $ttSource = document.getElementById("ttSource");
 const $ttTime = document.getElementById("ttTime");
 const $toast = document.getElementById("toast");
+const $intervalSelect = document.getElementById("intervalSelect");
 
 // ══════════════════════════════════════════════════════════════
 // 4) 유틸
@@ -406,16 +409,34 @@ function renderChips() {
 
     visible.forEach(k => {
         const chip = document.createElement("div");
-        chip.className = "chip";
+        chip.className = "chip" + (k.id === activeKeywordId ? " active" : "");
+        chip.dataset.kwid = k.id;
         chip.innerHTML = `
           <span>${k.text}</span>
           <span class="chip-source">${k.source}</span>
           <button class="x" title="삭제" aria-label="삭제">×</button>
         `;
+
+        // 칩 클릭 → 해당 섹션 최상단으로 이동
+        chip.addEventListener("click", (e) => {
+            if (e.target.classList.contains("x")) return;
+            // 같은 칩 다시 클릭하면 선택 해제
+            activeKeywordId = (activeKeywordId === k.id) ? null : k.id;
+            renderAll();
+            // 섹션으로 스크롤
+            if (activeKeywordId) {
+                requestAnimationFrame(() => {
+                    const target = document.querySelector(`.keyword-section[data-kw-id="${activeKeywordId}"]`);
+                    if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+                });
+            }
+        });
+
         chip.querySelector(".x").addEventListener("click", async (e) => {
             e.stopPropagation();
             try {
                 await apiDeleteKeyword(k.id);
+                if (activeKeywordId === k.id) activeKeywordId = null;
                 keywords = keywords.filter(x => x.id !== k.id);
                 delete articlesMap[k.id];
                 renderAll();
@@ -453,9 +474,15 @@ function renderAll() {
     const topArticle = allArticles.sort((a, b) => (b.publishedAt || 0) - (a.publishedAt || 0))[0];
     renderTopStory(topArticle || null);
 
-    // 키워드별 섹션
+    // 키워드별 섹션 — 선택된 키워드를 맨 앞으로 정렬
     $newsSections.innerHTML = "";
-    keywords.forEach(kw => {
+    const orderedKws = activeKeywordId
+        ? [
+            ...keywords.filter(k => k.id === activeKeywordId),
+            ...keywords.filter(k => k.id !== activeKeywordId),
+        ]
+        : keywords;
+    orderedKws.forEach(kw => {
         const arts = articlesMap[kw.id] || [];
         const section = renderKeywordSection(kw, arts);
         $newsSections.appendChild(section);
@@ -555,16 +582,52 @@ $refreshBtn.addEventListener("click", async () => {
 });
 
 // ══════════════════════════════════════════════════════════════
-// 17) 초기화
+// 17) 초기화 & 자동 실행
 // ══════════════════════════════════════════════════════════════
+
+// 자동 수집 타이머 관리
+function startAutoFetch(minutes) {
+    if (autoFetchTimer) clearInterval(autoFetchTimer);
+    if (minutes <= 0) return; // 수동 모드
+
+    console.log(`[AutoFetch] ${minutes}분 주기로 설정됨`);
+    autoFetchTimer = setInterval(async () => {
+        if (!keywords.length) return;
+
+        // 1. 수집 요청 (백그라운드)
+        setStatus("자동 수집 중…");
+        try {
+            await apiFetchNow();
+            // 2. UI 갱신 (변경된 데이터 가져오기)
+            await loadAllArticles();
+            showToast(`${minutes}분 주기 자동 업데이트 완료`);
+        } catch (err) {
+            console.error("Auto Fetch Error:", err);
+            showToast("자동 수집 실패", "error");
+        } finally {
+            setStatus("대기 중");
+        }
+    }, minutes * 60 * 1000);
+}
+
+// 주기 변경 이벤트
+$intervalSelect.addEventListener("change", (e) => {
+    const min = parseInt(e.target.value, 10);
+    localStorage.setItem("news_interval", min);
+    startAutoFetch(min);
+    showToast(`자동 수집 주기가 ${min > 0 ? min + "분" : "수동"}으로 변경되었습니다.`);
+});
+
 async function init() {
     $emptyState.style.display = "block";
+
+    // 저장된 주기 불러오기 (기본값 5분)
+    const savedInterval = localStorage.getItem("news_interval");
+    const intervalMin = savedInterval !== null ? parseInt(savedInterval, 10) : 5;
+    $intervalSelect.value = intervalMin;
+    startAutoFetch(intervalMin);
+
     await loadKeywords();
 }
 
 init();
-
-// 60초마다 자동 새로고침 (UI만)
-setInterval(() => {
-    if (keywords.length) loadAllArticles();
-}, 60 * 1000);
